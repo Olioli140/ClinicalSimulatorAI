@@ -4,6 +4,8 @@ import { AiPromptRequestSchema, ExplainRequestSchema, ExplainResponseSchema } fr
 import { AiActionProposalSchema, ProposeActionRequestSchema } from "./actionContracts.js";
 import { buildActionProposalPrompt } from "./actionDecision.js";
 import { validateActionProposal } from "./actionValidator.js";
+import { AutonomyStepRequestSchema, AutonomousModelDecisionSchema, AutonomyAuditEntrySchema } from "./autonomyContracts.js";
+import { buildAutonomyPrompt, createAuditEntry, evaluateAutonomyGate, validateAutonomousDecision } from "./autonomyLoop.js";
 import { buildExplainPrompt } from "./observer.js";
 import { OllamaClient } from "./ollamaClient.js";
 
@@ -70,6 +72,47 @@ app.post("/v1/propose-action", async (req, res) => {
     });
   } catch (error) {
     res.status(503).json({ error: "local_ai_unavailable", detail: error instanceof Error ? error.message : "Unknown proposal error" });
+  }
+});
+
+app.post("/v1/autonomy/step", async (req, res) => {
+  const parsed = AutonomyStepRequestSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(400).json({ error: "invalid_autonomy_context", issues: parsed.error.issues });
+
+  const gate = evaluateAutonomyGate(parsed.data);
+  if (!gate.allowed) {
+    return void res.json({
+      status: "stopped",
+      stopReason: gate.stopReason,
+      executable: false,
+      hostExecutionRequired: true
+    });
+  }
+
+  try {
+    const generated = await client.generate({ ...buildAutonomyPrompt(parsed.data), temperature: 0.05 });
+    let payload: unknown;
+    try { payload = JSON.parse(generated.output); }
+    catch { return void res.status(502).json({ error: "invalid_model_output", detail: "Model did not return valid JSON." }); }
+
+    const decision = AutonomousModelDecisionSchema.safeParse(payload);
+    if (!decision.success) return void res.status(502).json({ error: "invalid_autonomy_decision", issues: decision.error.issues });
+
+    const validation = validateAutonomousDecision(decision.data, parsed.data);
+    const audit = AutonomyAuditEntrySchema.parse(createAuditEntry(decision.data, parsed.data, validation));
+
+    res.json({
+      status: decision.data.decision,
+      decision: decision.data,
+      validation,
+      audit,
+      executable: false,
+      handoff: validation?.accepted ? "HOST_UNIFIED_ACTION_API_REQUIRED" : decision.data.decision === "propose_action" ? "REJECTED_BY_VALIDATOR" : "NO_HOST_ACTION_REQUESTED",
+      model: generated.model,
+      latencyMs: generated.latencyMs
+    });
+  } catch (error) {
+    res.status(503).json({ error: "local_ai_unavailable", detail: error instanceof Error ? error.message : "Unknown autonomy error" });
   }
 });
 
