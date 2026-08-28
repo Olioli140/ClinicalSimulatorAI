@@ -49,3 +49,4 @@ export const BatchValidationResultSchema = z.object({
   }).strict(),
   runs: z.array(ValidationRunResultSchema)
 }).strict();
+export type BatchValidationResult = z.infer<typeof BatchValidationResultSchema>;
