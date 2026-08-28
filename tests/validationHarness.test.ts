@@ -18,14 +18,17 @@ describe("AI-3V validation harness", () => {
   it("captures validator and host failure injection", () => {
     const rejected = runValidationScenario({ seed: 3, durationMinutes: 30, disturbance: "validator_rejection", disturbanceAtMinute: 6 });
     const hostFailure = runValidationScenario({ seed: 4, durationMinutes: 30, disturbance: "host_failure", disturbanceAtMinute: 6 });
-    expect(rejected.metrics.actionsRejected).toBeGreaterThanOrEqual(0);
-    expect(hostFailure.metrics.hostFailures).toBeGreaterThanOrEqual(0);
+    expect(rejected.metrics.actionsRejected).toBe(1);
+    expect(rejected.metrics.maxConsecutiveValidatorRejections).toBe(1);
+    expect(hostFailure.metrics.hostFailures).toBe(1);
   });
 
   it("runs the default 120-case batch", () => {
     const batch = runBatchValidation();
     expect(batch.totalRuns).toBe(120);
     expect(batch.completedRuns).toBe(120);
+    expect(batch.architectureSafetyPasses).toBe(120);
     expect(batch.aggregate.totalDirectAiExecutions).toBe(0);
+    expect(batch.aggregate.totalHostFailures).toBeGreaterThan(0);
   });
 });
