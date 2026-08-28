@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
-import { AiPromptRequestSchema } from "./contracts.js";
+import { AiPromptRequestSchema, ExplainRequestSchema, ExplainResponseSchema } from "./contracts.js";
+import { buildExplainPrompt } from "./observer.js";
 import { OllamaClient } from "./ollamaClient.js";
 
 const port = Number(process.env.PORT ?? 8787);
@@ -10,7 +11,6 @@ const timeoutMs = Number(process.env.AI_REQUEST_TIMEOUT_MS ?? 15000);
 
 const client = new OllamaClient({ baseUrl, model, timeoutMs });
 const app = express();
-
 app.use(express.json({ limit: "128kb" }));
 
 app.get("/health", async (_req, res) => {
@@ -21,21 +21,45 @@ app.get("/health", async (_req, res) => {
 app.post("/v1/generate", async (req, res) => {
   const parsed = AiPromptRequestSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({
-      error: "invalid_request",
-      issues: parsed.error.issues
-    });
+    res.status(400).json({ error: "invalid_request", issues: parsed.error.issues });
+    return;
+  }
+  try {
+    res.json(await client.generate(parsed.data));
+  } catch (error) {
+    res.status(503).json({ error: "local_ai_unavailable", detail: error instanceof Error ? error.message : "Unknown generation error" });
+  }
+});
+
+app.post("/v1/explain", async (req, res) => {
+  const parsed = ExplainRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_observation", issues: parsed.error.issues });
     return;
   }
 
   try {
-    const result = await client.generate(parsed.data);
-    res.json(result);
-  } catch (error) {
-    res.status(503).json({
-      error: "local_ai_unavailable",
-      detail: error instanceof Error ? error.message : "Unknown generation error"
+    const prompt = buildExplainPrompt(parsed.data);
+    const generated = await client.generate({ ...prompt, temperature: 0.1 });
+    let payload: unknown;
+    try {
+      payload = JSON.parse(generated.output);
+    } catch {
+      res.status(502).json({ error: "invalid_model_output", detail: "Model did not return valid JSON." });
+      return;
+    }
+    const response = ExplainResponseSchema.safeParse({
+      ...(payload as object),
+      model: generated.model,
+      latencyMs: generated.latencyMs
     });
+    if (!response.success) {
+      res.status(502).json({ error: "invalid_model_output", issues: response.error.issues });
+      return;
+    }
+    res.json(response.data);
+  } catch (error) {
+    res.status(503).json({ error: "local_ai_unavailable", detail: error instanceof Error ? error.message : "Unknown explanation error" });
   }
 });
 
