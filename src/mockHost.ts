@@ -26,7 +26,7 @@ export class DeterministicMockHost {
   };
 
   applyDisturbance(kind: string): void {
-    if (kind === "hypotension") this.state.map = 54;
+    if (["hypotension", "validator_rejection", "host_failure"].includes(kind)) this.state.map = 54;
     if (kind === "hypoventilation") { this.state.etco2 = 52; this.state.minuteVentilation = 3.8; }
     if (kind === "light_anesthesia") { this.state.bis = 68; this.state.mac = 0.5; }
   }
