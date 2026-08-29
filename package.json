@@ -11,7 +11,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:ai3": "tsx src/runValidation.ts",
-    "benchmark:real": "tsx src/runRealBenchmark.ts"
+    "benchmark:real": "tsx src/runRealBenchmark.ts",
+    "benchmark:robustness": "tsx src/runRobustnessBenchmark.ts"
   },
   "engines": {
     "node": ">=20"
