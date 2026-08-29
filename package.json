@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "validate:ai3": "tsx src/runValidation.ts"
+    "validate:ai3": "tsx src/runValidation.ts",
+    "benchmark:real": "tsx src/runRealBenchmark.ts"
   },
   "engines": {
     "node": ">=20"
